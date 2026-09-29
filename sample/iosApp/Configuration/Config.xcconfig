@@ -1,0 +1,9 @@
+// Leave TEAM_ID empty to run on the simulator with no signing identity.
+// Set it (Apple Developer team id) only when deploying to a physical device.
+TEAM_ID=
+
+PRODUCT_NAME=KmpAdsSample
+PRODUCT_BUNDLE_IDENTIFIER=io.github.shivathapaa.kmpads.sample
+
+CURRENT_PROJECT_VERSION=1
+MARKETING_VERSION=0.1.0

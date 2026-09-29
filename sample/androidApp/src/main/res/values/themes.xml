@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Compose draws its own surfaces, so the platform theme only removes the action bar. -->
+    <style name="Theme.KmpAdsSample" parent="@android:style/Theme.DeviceDefault.Light.NoActionBar" />
+</resources>

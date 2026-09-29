@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Required by the Google Mobile Ads SDK. This is Google's demo application id. -->
+	<key>GADApplicationIdentifier</key>
+	<string>ca-app-pub-3940256099942544~1458002511</string>
+
+	<!-- Shown in the App Tracking Transparency prompt. -->
+	<key>NSUserTrackingUsageDescription</key>
+	<string>This sample uses this to show more relevant ads and to measure how well they perform. You'll see the same number of ads either way.</string>
+
+	<!-- Google's SKAdNetwork identifier. An app lists every network from Google's AdMob iOS docs. -->
+	<key>SKAdNetworkItems</key>
+	<array>
+		<dict>
+			<key>SKAdNetworkIdentifier</key>
+			<string>cstr6suwn9.skadnetwork</string>
+		</dict>
+	</array>
+
+	<!-- Required by Compose Multiplatform on iOS. -->
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
+
+	<key>UILaunchScreen</key>
+	<dict/>
+</dict>
+</plist>

@@ -1,0 +1,85 @@
+name: Publish
+
+on:
+  release:
+    types: [released, prereleased]
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  validate-wrapper:
+    name: Validate Gradle wrapper
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: gradle/actions/wrapper-validation@v4
+
+  verify-version:
+    name: Verify release tag matches VERSION_NAME
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - name: Compare release tag to gradle.properties
+        run: |
+          set -euo pipefail
+          tag="${{ github.event.release.tag_name }}"
+          tag="${tag#v}"
+          version_name=$(grep '^VERSION_NAME=' gradle.properties | cut -d= -f2 | tr -d '[:space:]')
+          if [ -z "$version_name" ]; then
+            echo "::error::Could not read VERSION_NAME from gradle.properties"
+            exit 1
+          fi
+          if [ "$tag" != "$version_name" ]; then
+            echo "::error::Release tag '$tag' does not match gradle.properties VERSION_NAME '$version_name'. Bump VERSION_NAME or retag before publishing."
+            exit 1
+          fi
+          echo "Tag '$tag' matches VERSION_NAME '$version_name'."
+
+  test:
+    needs: [validate-wrapper, verify-version]
+    uses: ./.github/workflows/_test.yml
+
+  publish:
+    name: Publish to Maven Central
+    needs: test
+    runs-on: macos-latest
+    timeout-minutes: 60
+    environment: maven-central
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: 21
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Publish all modules
+        run: |
+          ./gradlew \
+            :ads-bridge-ios:publishAndReleaseToMavenCentral \
+            :ads-core:publishAndReleaseToMavenCentral \
+            :ads-compose:publishAndReleaseToMavenCentral \
+            :ads-admob-android:publishAndReleaseToMavenCentral \
+            :ads-testing:publishAndReleaseToMavenCentral \
+            --no-parallel \
+            --stacktrace
+        env:
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_KEY_ID }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.GPG_KEY_CONTENTS }}

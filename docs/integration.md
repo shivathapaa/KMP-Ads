@@ -85,7 +85,7 @@ If your `google()` block uses a content filter, it must include `com.google.andr
 
 ```toml
 [versions]
-kmpads = "0.2.0"
+kmpads = "1.0.0"
 
 [libraries]
 kmpads-core          = { module = "io.github.shivathapaa.kmpads:ads-core",          version.ref = "kmpads" }

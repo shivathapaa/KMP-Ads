@@ -56,7 +56,7 @@ dependencyResolutionManagement {
 ```toml
 # gradle/libs.versions.toml
 [versions]
-kmpads = "0.2.0"
+kmpads = "1.0.0"
 
 [libraries]
 kmpads-core = { module = "io.github.shivathapaa.kmpads:ads-core", version.ref = "kmpads" }
@@ -201,6 +201,7 @@ framework itself.
   ids and testing.
 - [iOS setup](docs/ios-bridge.md): the Swift adapter and the framework export.
 - [Ad policy](docs/policy.md): placement rules, consent and invalid-traffic safety.
+- [Changelog](CHANGELOG.md): what changed in each release, and what to do when upgrading.
 
 ## Compatibility
 

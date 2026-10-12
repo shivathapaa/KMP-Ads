@@ -11,7 +11,7 @@ app that consumes the library can already build against it.
 | | |
 |---|---|
 | group | `io.github.shivathapaa.kmpads` |
-| version | 0.2.0 |
+| version | 1.0.0 |
 | bridge protocol (`KMPAdsProtocol.VERSION`) | 2 |
 | artifacts | `ads-core`, `ads-compose`, `ads-bridge-ios`, `ads-admob-android`, `ads-testing` |
 | repository | Maven Central |

@@ -16,8 +16,9 @@ persistence.
   are configuration, evaluated by a pure policy engine.
 - **Named suppression reasons.** Every missing ad has a reason, such as
   `RequiredSignalFalse(ads.consent_obtained)` or `DailyCapReached(12)`.
-- **Compose Multiplatform slots.** `AdBannerSlot` reserves its height before the ad loads, so the
-  layout does not jump. `AdNativeSlot` renders through the SDK's own native ad view.
+- **Compose Multiplatform slots.** `AdBannerSlot` reserves its height before the ad loads and the
+  banner is built at exactly that size, adaptive, 320x50 or a fixed height, so the layout does not
+  jump, including under mediation. `AdNativeSlot` renders through the SDK's own native ad view.
 - **Every AdMob format.** Banner, native, interstitial, rewarded, rewarded interstitial and app open.
 - **Consent built in.** Google's User Messaging Platform on Android, and the same flow through a
   Swift adapter on iOS. No ad is requested until consent resolves.

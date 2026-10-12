@@ -411,7 +411,9 @@ Two Android specifics:
    `swift-package-manager-google-user-messaging-platform.git` if your adapter imports
    `UserMessagingPlatform` directly.
 2. **Copy `sample/iosApp/iosApp/AdMobHost.swift`.** It is the reference `KMPAdsHost` implementation
-   and compiles against any framework name; change only the framework `import` line.
+   and compiles against any framework name; change only the framework `import` line. Copy it again
+   whenever a release bumps `KMPAdsProtocol.VERSION` (see
+   [ios-bridge.md](ios-bridge.md#upgrading-the-adapter)).
 3. **`Info.plist`:** `GADApplicationIdentifier` (with the `~`), `SKAdNetworkItems`, and
    `CADisableMinimumFrameDurationOnPhone` (Compose Multiplatform's own plist check aborts the process
    at launch without it).
@@ -463,8 +465,9 @@ CompositionLocalProvider(LocalAds provides ads) {
 
 ### Banner (inline)
 
-The slot reserves its height before requesting an ad, so a loading ad does not move the content
-around it.
+The slot gets the banner's height from the provider, reserves it, and only then requests an ad. The
+banner view is built at exactly that size, so a loading ad, a no-fill or a refresh never moves the
+content around it.
 
 ```kotlin
 Scaffold(
@@ -472,9 +475,32 @@ Scaffold(
 ) { /* … */ }
 ```
 
+Pick the size with `sizing`:
+
+| `BannerSizing` | Reserved height | Use for |
+|---|---|---|
+| `AnchoredAdaptive` (default) | Google's large anchored adaptive height for the slot's width: 50–150dp, at most 20% of the screen | a banner anchored to the top or bottom of the screen |
+| `Standard320x50` | 50dp | a slot designed around the classic banner |
+| `FixedHeight(heightDp)` | `heightDp` | a banner between content that must match a design |
+
+```kotlin
+// Inside a list: a 100dp banner between items.
+AdBannerSlot(
+    placement = Placements.HomeBanner.id,
+    sizing = BannerSizing.FixedHeight(100),
+)
+```
+
+The height is decided from the width alone, before the request, and does not change afterwards.
+With AdMob mediation, every adapter is asked for that size; a network that serves something smaller
+shows it inside the reserved space instead of resizing the slot. Sizes known only after an ad loads
+(inline adaptive, fluid, collapsible) are not offered, because they would move the layout.
+
 `collapseWhenSuppressed` defaults to `true`: a suppressed slot takes no space and composes nothing.
 For a bottom-anchored banner that should take no space until an ad has loaded, set
-`collapseUntilLoaded = true`.
+`collapseUntilLoaded = true`; leave it `false` for a banner between content, where the reserved
+height keeps the list from jumping. `onLoadStateChanged` reports the same load state, for hiding
+your own decoration around the slot.
 
 ### Native (inline)
 
@@ -630,7 +656,9 @@ loads and shows run on `Dispatchers.Main`, so tests that show ads set a test mai
 | iOS aborts at launch | `CADisableMinimumFrameDurationOnPhone` missing from `Info.plist` |
 | ATT prompt never appears | requested during launch / over the consent form, or not while active (§12) |
 | Objective-C header is huge | an exported type exposes an `ads-core` type, or `transitiveExport = true` is set (§4) |
-| The Swift adapter won't compile | reconcile against your GoogleMobileAds SPM version — see the `AdMobHost.swift` header |
+| The Swift adapter won't compile | after a library upgrade: the bridge protocol changed, re-copy `AdMobHost.swift` ([ios-bridge.md](ios-bridge.md#upgrading-the-adapter)). Otherwise reconcile against your GoogleMobileAds SPM version — see the `AdMobHost.swift` header |
+| iOS logs `KMPAdsHost protocol N != expected M; ads disabled` | the adapter was written for another bridge protocol — re-copy `AdMobHost.swift` |
+| An iOS banner is a different height from its slot | the adapter's `adaptiveBannerHeightPoints` and `makeBanner` use different `AdSize`s — both must use `largeAnchoredAdaptiveBanner(width:)` |
 
 ---
 

@@ -36,6 +36,7 @@ import io.github.shivathapaa.kmpads.provider.asAdPlatformView
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlin.time.TimeSource
 
 private const val TAG = "kmp-ads/ios"
@@ -235,14 +236,23 @@ private class IosBannerLoader(
         listener: BannerAdListener,
     ): BannerAdHandle {
         val reserved = reservedHeightDp(context, request.widthDp, request.sizing)
+
+        // Set by the surface callback. The view exists before it has loaded.
+        val loaded = MutableStateFlow(false)
+
         val view = host.makeBanner(
             unitId = request.unitId.value,
             widthPoints = request.widthDp.toDouble(),
+            sizing = request.sizing.toBridgeSizing(),
+            heightPoints = reserved.toDouble(),
             callback = object : KMPAdsSurfaceCallback {
-                override fun onSurfaceLoaded(widthPoints: Double, heightPoints: Double) =
+                override fun onSurfaceLoaded(widthPoints: Double, heightPoints: Double) {
+                    loaded.value = true
                     listener.onLoaded()
+                }
 
                 override fun onSurfaceFailed(code: Int, message: String) {
+                    // A refresh failure keeps the current banner on screen, so `loaded` is left as it is.
                     logger.log(AdLogLevel.Warn, TAG, "banner failed ($code): $message", null)
                     listener.onLoadFailed(iosErrorFor(code))
                 }
@@ -252,7 +262,7 @@ private class IosBannerLoader(
                 override fun onSurfaceClick() = listener.onClicked()
             },
         )
-        return IosBannerHandle(host, view.asAdPlatformView(), view, reserved)
+        return IosBannerHandle(host, view.asAdPlatformView(), view, reserved, loaded.asStateFlow())
     }
 }
 
@@ -261,10 +271,8 @@ private class IosBannerHandle(
     override val view: AdPlatformView,
     private val nativeView: platform.UIKit.UIView,
     override val reservedHeightDp: Int,
+    override val isLoaded: StateFlow<Boolean>,
 ) : BannerAdHandle {
-    // The adapter exposes no fill callback for banners, so the banner is reported as loaded.
-    override val isLoaded: StateFlow<Boolean> = MutableStateFlow(true)
-
     /** The adapter returns a view that is already loading, so there is nothing to start here. */
     override fun load(): Unit = Unit
 
@@ -359,6 +367,12 @@ private fun AdFormat.toBridgeFormat(): String? = when (this) {
     AdFormat.RewardedInterstitial -> KMPAdsProtocol.FORMAT_REWARDED_INTERSTITIAL
     AdFormat.AppOpen -> KMPAdsProtocol.FORMAT_APP_OPEN
     AdFormat.Banner, AdFormat.Native -> null
+}
+
+private fun BannerSizing.toBridgeSizing(): String = when (this) {
+    BannerSizing.AnchoredAdaptive -> KMPAdsProtocol.BANNER_ANCHORED_ADAPTIVE
+    BannerSizing.Standard320x50 -> KMPAdsProtocol.BANNER_STANDARD
+    is BannerSizing.FixedHeight -> KMPAdsProtocol.BANNER_FIXED_HEIGHT
 }
 
 private fun AdAudienceConfig.AgeRestriction.toBridgeAgeRestriction(): String = when (this) {

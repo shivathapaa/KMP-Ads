@@ -199,15 +199,30 @@ public final class AdMobHost: NSObject, KMPAdsHost {
 
     /// Synchronous and network-free, so Compose can reserve the height before a request.
     public func adaptiveBannerHeightPoints(widthPoints: Double) -> Double {
-        Double(currentOrientationAnchoredAdaptiveBanner(width: CGFloat(widthPoints)).size.height)
+        Double(largeAnchoredAdaptiveBanner(width: CGFloat(widthPoints)).size.height)
     }
 
+    /// Builds the banner at exactly the size the library reserved, so the layout never moves.
     public func makeBanner(
         unitId: String,
         widthPoints: Double,
+        sizing: String,
+        heightPoints: Double,
         callback: any KMPAdsSurfaceCallback
     ) -> UIView {
-        let size = currentOrientationAnchoredAdaptiveBanner(width: CGFloat(widthPoints))
+        let size: AdSize
+        switch sizing {
+        case KMPAdsProtocol.shared.BANNER_ANCHORED_ADAPTIVE:
+            size = largeAnchoredAdaptiveBanner(width: CGFloat(widthPoints))
+        case KMPAdsProtocol.shared.BANNER_STANDARD:
+            size = AdSizeBanner
+        case KMPAdsProtocol.shared.BANNER_FIXED_HEIGHT:
+            size = adSizeFor(cgSize: CGSize(width: widthPoints, height: heightPoints))
+        default:
+            callback.onSurfaceFailed(code: -1, message: "unknown banner sizing")
+            return UIView()
+        }
+
         let banner = BannerView(adSize: size)
         banner.adUnitID = unitId
         banner.rootViewController = Self.topViewController()

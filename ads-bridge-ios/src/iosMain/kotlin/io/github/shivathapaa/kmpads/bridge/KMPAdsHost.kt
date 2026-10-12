@@ -73,19 +73,27 @@ public interface KMPAdsHost {
     public fun requestTrackingAuthorization(callback: KMPAdsConsentCallback)
 
     /**
-     * The height, in points, of an anchored adaptive banner at [widthPoints]. Synchronous and does not
-     * use the network.
+     * The height, in points, of a large anchored adaptive banner at [widthPoints]. Synchronous and
+     * does not use the network.
      */
     public fun adaptiveBannerHeightPoints(widthPoints: Double): Double
 
     /**
+     * The library has already reserved [heightPoints] in the layout, so the banner must be created at
+     * exactly that size; any other size moves the content around it.
+     *
      * @param widthPoints the width Compose measured, in points.
+     * @param sizing one of the `BANNER_` constants in [KMPAdsProtocol].
+     * @param heightPoints the height the library reserved. For [KMPAdsProtocol.BANNER_FIXED_HEIGHT]
+     *   it is the height to request.
      * @return a view that is already loading. A failed load reports through [callback] and the view
      *   stays empty.
      */
     public fun makeBanner(
         unitId: String,
         widthPoints: Double,
+        sizing: String,
+        heightPoints: Double,
         callback: KMPAdsSurfaceCallback,
     ): UIView
 
@@ -117,12 +125,16 @@ public interface KMPAdsHost {
 @ObjCName("KMPAdsProtocol", exact = true)
 public object KMPAdsProtocol {
     /** The [KMPAdsHost] protocol version. See [KMPAdsHost.protocolVersion]. */
-    public const val VERSION: Int = 1
+    public const val VERSION: Int = 2
 
     public const val FORMAT_INTERSTITIAL: String = "interstitial"
     public const val FORMAT_REWARDED: String = "rewarded"
     public const val FORMAT_REWARDED_INTERSTITIAL: String = "rewardedInterstitial"
     public const val FORMAT_APP_OPEN: String = "appOpen"
+
+    public const val BANNER_ANCHORED_ADAPTIVE: String = "anchoredAdaptive"
+    public const val BANNER_STANDARD: String = "standard"
+    public const val BANNER_FIXED_HEIGHT: String = "fixedHeight"
 
     public const val GEOGRAPHY_DISABLED: String = ""
     public const val GEOGRAPHY_EEA: String = "eea"

@@ -124,7 +124,7 @@ val checkObjCExport by tasks.registering {
             "@protocol KMPAdsLoadCallback",
             "@protocol KMPAdsConsentCallback",
             "@protocol KMPAdsStartCallback",
-            """swift_name("makeBanner(unitId:widthPoints:callback:)")""",
+            """swift_name("makeBanner(unitId:widthPoints:sizing:heightPoints:callback:)")""",
             """swift_name("showFullScreen(format:unitId:callback:)")""",
         )
         val forbidden = listOf(

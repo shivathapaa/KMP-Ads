@@ -37,6 +37,7 @@ import io.github.shivathapaa.kmpads.config.AdPlacementId
 import io.github.shivathapaa.kmpads.consent.AdConsentController
 import io.github.shivathapaa.kmpads.event.AdEvent
 import io.github.shivathapaa.kmpads.policy.AdDecision
+import io.github.shivathapaa.kmpads.provider.BannerSizing
 import io.github.shivathapaa.kmpads.provider.NativeAdStyle
 import io.github.shivathapaa.kmpads.runtime.AdsSystem
 import kotlinx.coroutines.launch
@@ -83,6 +84,22 @@ private fun SampleContent(consent: AdConsentController) {
                     "All placements use Google's demo ad units. Nothing here can produce a billable " +
                         "impression.",
                     style = MaterialTheme.typography.bodySmall,
+                )
+            }
+
+            // One slot per non-default BannerSizing; the bottom bar shows the adaptive default. Each
+            // reserves its height before the request and the banner is built at exactly that size.
+            item { SectionLabel("banner sizes") }
+            item {
+                AdBannerSlot(
+                    placement = SamplePlacements.Banner.id,
+                    sizing = BannerSizing.Standard320x50,
+                )
+            }
+            item {
+                AdBannerSlot(
+                    placement = SamplePlacements.Banner.id,
+                    sizing = BannerSizing.FixedHeight(100),
                 )
             }
 
@@ -176,7 +193,6 @@ private fun SampleContent(consent: AdConsentController) {
 private fun SectionLabel(text: String) {
     Text(text, style = MaterialTheme.typography.titleSmall)
 }
-
 /** Native ad styling: `0xAARRGGBB` colours and dp/sp sizes. */
 private val SampleNativeStyle: NativeAdStyle = NativeAdStyle(
     backgroundArgb = 0xFFF2F2F7,

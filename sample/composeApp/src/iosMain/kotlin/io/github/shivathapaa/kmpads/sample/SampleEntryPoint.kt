@@ -29,10 +29,15 @@ public class SampleIosEntryPoint(host: KMPAdsHost?) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val adsHost = host
 
-    private val consentController: AdConsentController = iosConsentController(host)
+    // Printed to the Xcode console, like the Android sample's Logcat output.
+    private val logger = AdLogger { level, tag, message, cause ->
+        println("$level $tag: $message${cause?.let { " ($it)" } ?: ""}")
+    }
+
+    private val consentController: AdConsentController = iosConsentController(host, logger)
 
     private val ads: AdsSystem = createSampleAdsSystem(
-        provider = iosAdProvider(host, logger = AdLogger.NoOp),
+        provider = iosAdProvider(host, logger = logger),
         platform = AdPlatform.Ios,
         scope = scope,
         storage = UserDefaultsAdStorage(),

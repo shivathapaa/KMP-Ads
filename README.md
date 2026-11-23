@@ -56,7 +56,7 @@ dependencyResolutionManagement {
 ```toml
 # gradle/libs.versions.toml
 [versions]
-kmpads = "1.0.0"
+kmpads = "2.0.0"
 
 [libraries]
 kmpads-core = { module = "io.github.shivathapaa.kmpads:ads-core", version.ref = "kmpads" }

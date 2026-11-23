@@ -20,6 +20,8 @@ class AdPolicyEngineTest {
     private fun input(
         policy: AdPolicy = AdPolicy(),
         counters: PlacementCounters = PlacementCounters(),
+        /** The consent signal's value, or null for a host that never registered one. */
+        consent: Boolean? = true,
         signals: Map<AdSignalKey, Boolean> = emptyMap(),
         nowMillis: Long = BASE_MILLIS,
         dayKey: Int = 100,
@@ -42,7 +44,10 @@ class AdPolicyEngineTest {
             firstLaunchAtMillis = firstLaunchAtMillis,
             firstRunComplete = firstRunComplete,
         ),
-        signals = signals,
+        signals = buildMap {
+            if (consent != null) put(AdSignalKey.ConsentObtained, consent)
+            putAll(signals)
+        },
         globalEnabled = globalEnabled,
         remotelyDisabled = remotelyDisabled,
         unitIdPresent = unitIdPresent,
@@ -67,11 +72,45 @@ class AdPolicyEngineTest {
     @Test
     fun a_policy_naming_an_unregistered_signal_fails_closed() {
         val policy = AdPolicy(requireAll = setOf(AdSignalKey.ConsentObtained))
-        val decision = AdPolicyEngine.evaluate(input(policy = policy, signals = emptyMap()))
+        val decision = AdPolicyEngine.evaluate(input(policy = policy, consent = null))
         assertEquals(
             AdDecision.Suppress(SuppressionReason.SignalMissing(AdSignalKey.ConsentObtained)),
             decision,
         )
+    }
+
+    @Test
+    fun consent_is_required_even_when_the_policy_does_not_list_it() {
+        // AdPlacement defaults to AdPolicy.Default, which lists no signals at all.
+        val notGiven = AdPolicyEngine.evaluate(input(policy = AdPolicy.Default, consent = false))
+        assertEquals(
+            AdDecision.Suppress(SuppressionReason.RequiredSignalFalse(AdSignalKey.ConsentObtained)),
+            notGiven,
+        )
+
+        val neverWired = AdPolicyEngine.evaluate(input(policy = AdPolicy.Default, consent = null))
+        assertEquals(
+            AdDecision.Suppress(SuppressionReason.SignalMissing(AdSignalKey.ConsentObtained)),
+            neverWired,
+        )
+    }
+
+    @Test
+    fun consent_outranks_the_policy_s_own_signals() {
+        val policy = AdPolicy(suppressWhen = setOf(audioIsPlaying))
+        val decision = AdPolicyEngine.evaluate(
+            input(policy = policy, consent = false, signals = mapOf(audioIsPlaying to true))
+        )
+        assertEquals(
+            AdDecision.Suppress(SuppressionReason.RequiredSignalFalse(AdSignalKey.ConsentObtained)),
+            decision,
+        )
+    }
+
+    @Test
+    fun wiring_problems_outrank_consent_so_a_misconfiguration_shows_before_consent() {
+        val decision = AdPolicyEngine.evaluate(input(consent = false, unitIdPresent = false))
+        assertEquals(AdDecision.Suppress(SuppressionReason.UnitIdMissing), decision)
     }
 
     @Test

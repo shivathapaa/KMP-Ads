@@ -6,8 +6,6 @@ struct iOSApp: App {
     /// Created once for the process. Pass `nil` instead of `AdMobHost()` to run without ads.
     @StateObject private var ads = AdsHolder()
 
-    @Environment(\.scenePhase) private var scenePhase
-
     var body: some Scene {
         WindowGroup {
             ComposeView(entryPoint: ads.entryPoint)
@@ -17,14 +15,26 @@ struct iOSApp: App {
                     // tracking prompt shown during launch or over the consent form.
                     ads.entryPoint.startConsentFlow()
                 }
-        }
-        // The single-argument onChange keeps the sample compatible with iOS 16.
-        .onChange(of: scenePhase) { phase in
-            switch phase {
-            case .active: ads.entryPoint.onAppForegrounded()
-            case .background: ads.entryPoint.onAppBackgrounded()
-            default: break
-            }
+                // Sessions follow the app entering and leaving the background. Not scenePhase
+                // .active, which also fires after a system alert, Control Center or the app
+                // switcher, none of which leave the app.
+                .onReceive(
+                    NotificationCenter.default.publisher(
+                        for: UIApplication.willEnterForegroundNotification
+                    )
+                ) { _ in
+                    ads.entryPoint.onAppForegrounded()
+                    // Retries a consent gather that failed, for example offline. A completed one
+                    // is not repeated.
+                    ads.entryPoint.startConsentFlow()
+                }
+                .onReceive(
+                    NotificationCenter.default.publisher(
+                        for: UIApplication.didEnterBackgroundNotification
+                    )
+                ) { _ in
+                    ads.entryPoint.onAppBackgrounded()
+                }
         }
     }
 }

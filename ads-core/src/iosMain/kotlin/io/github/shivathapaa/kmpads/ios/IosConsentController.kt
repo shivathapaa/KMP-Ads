@@ -9,6 +9,7 @@ import io.github.shivathapaa.kmpads.consent.AdDebugGeography
 import io.github.shivathapaa.kmpads.consent.NoOpAdConsentController
 import io.github.shivathapaa.kmpads.error.AdLogLevel
 import io.github.shivathapaa.kmpads.error.AdLogger
+import io.github.shivathapaa.kmpads.error.nonThrowing
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,7 +26,8 @@ private const val CONSENT_TAG = "kmp-ads/ios-consent"
 public fun iosConsentController(
     host: KMPAdsHost?,
     logger: AdLogger = AdLogger.NoOp,
-): AdConsentController = host?.let { IosConsentController(it, logger) } ?: NoOpAdConsentController
+): AdConsentController =
+    host?.let { IosConsentController(it, logger.nonThrowing()) } ?: NoOpAdConsentController
 
 internal class IosConsentController(
     private val host: KMPAdsHost,
@@ -42,6 +44,8 @@ internal class IosConsentController(
 
     /** Serialises consent gathering so the form is never shown twice at once. */
     private val gate = Mutex()
+
+    /** Set only by a gather that completed, so a failed one is asked again by the next call. */
     private var gathered = false
 
     override suspend fun gather(
@@ -49,7 +53,6 @@ internal class IosConsentController(
         testDeviceIdentifiers: List<String>,
     ): AdConsentState = gate.withLock {
         if (gathered) return@withLock backing.value
-        gathered = true
 
         val result = CompletableDeferred<AdConsentState>()
         host.gatherConsent(
@@ -57,7 +60,12 @@ internal class IosConsentController(
             testDeviceIdentifiers = testDeviceIdentifiers,
             callback = consentCallback(result),
         )
-        result.await().also { backing.value = it }
+        result.await().also { state ->
+            backing.value = state
+            // A failure, such as no network on a fresh install or no view controller to present the
+            // form from, leaves canRequestAds false until a later call succeeds.
+            gathered = state.status != AdConsentState.Status.Failed
+        }
     }
 
     override suspend fun showPrivacyOptions(): AdConsentState {
@@ -110,6 +118,7 @@ public suspend fun requestIosTrackingAuthorization(
     logger: AdLogger = AdLogger.NoOp,
 ): AdConsentState {
     if (host == null) return AdConsentState()
+    val safeLogger = logger.nonThrowing()
     val result = CompletableDeferred<AdConsentState>()
     host.requestTrackingAuthorization(
         object : KMPAdsConsentCallback {
@@ -119,7 +128,7 @@ public suspend fun requestIosTrackingAuthorization(
                 errorMessage: String?,
             ) {
                 if (errorMessage != null) {
-                    logger.log(AdLogLevel.Info, CONSENT_TAG, "att: $errorMessage", null)
+                    safeLogger.log(AdLogLevel.Info, CONSENT_TAG, "att: $errorMessage", null)
                 }
                 result.complete(
                     AdConsentState(

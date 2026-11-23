@@ -27,7 +27,7 @@
 //       MainKt.MainViewController(adsHost: AdMobHost())
 //     Pass `nil` to run without ads.
 //
-//  Written against Google Mobile Ads SDK 13, whose Swift names have no `GAD` prefix
+//  Written against Google Mobile Ads SDK 13.7 or newer, whose Swift names have no `GAD` prefix
 //  (`GADBannerView` is `BannerView`).
 //
 
@@ -56,8 +56,11 @@ public final class AdMobHost: NSObject, KMPAdsHost {
 
     // MARK: Protocol version
 
+    /// The bridge protocol this file was written for. Keep it a literal: returning
+    /// `KMPAdsProtocol.shared.VERSION` would always match the framework it is compiled against, so
+    /// the library could never tell that this adapter is out of date.
     public func protocolVersion() -> Int32 {
-        KMPAdsProtocol.shared.VERSION
+        2
     }
 
     // MARK: Lifecycle
@@ -80,9 +83,9 @@ public final class AdMobHost: NSObject, KMPAdsHost {
         }
         switch ageRestriction {
         case KMPAdsProtocol.shared.AGE_CHILD:
-            configuration.tagForChildDirectedTreatment = true
+            configuration.ageRestrictedTreatment = .child
         case KMPAdsProtocol.shared.AGE_TEEN:
-            configuration.tagForUnderAgeOfConsent = true
+            configuration.ageRestrictedTreatment = .teen
         default:
             break
         }
@@ -229,7 +232,6 @@ public final class AdMobHost: NSObject, KMPAdsHost {
 
         let delegate = BannerDelegate(callback: callback, size: size)
         banner.delegate = delegate
-        banner.paidEventHandler = { _ in /* revenue is reported through the Android path today */ }
         surfaceDelegates[ObjectIdentifier(banner)] = delegate
 
         banner.load(Request())
@@ -264,7 +266,6 @@ public final class AdMobHost: NSObject, KMPAdsHost {
     public func disposeSurface(view: UIView) {
         if let banner = view as? BannerView {
             banner.delegate = nil
-            banner.paidEventHandler = nil
             surfaceDelegates.removeValue(forKey: ObjectIdentifier(banner))
         } else if let native = view as? NativeAdView {
             nativeDelegates.removeValue(forKey: ObjectIdentifier(native))?.teardown()

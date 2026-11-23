@@ -12,6 +12,7 @@ import io.github.shivathapaa.kmpads.config.AdPlacementId
 import io.github.shivathapaa.kmpads.error.AdError
 import io.github.shivathapaa.kmpads.error.AdLogLevel
 import io.github.shivathapaa.kmpads.error.AdLogger
+import io.github.shivathapaa.kmpads.error.nonThrowing
 import io.github.shivathapaa.kmpads.provider.AdInitOutcome
 import io.github.shivathapaa.kmpads.provider.AdLoadOutcome
 import io.github.shivathapaa.kmpads.provider.AdLoadRequest
@@ -47,19 +48,28 @@ private const val STANDARD_BANNER_HEIGHT_DP = 50
 /**
  * Creates the iOS provider backed by a Swift [host]. A `null` host is supported: every request fails
  * with [KMPAdsProtocol.ERROR_CODE_NO_HOST] and no view is created.
+ *
+ * @param audience the audience declared in the app's store listing. It must equal
+ *   `AdsConfig.audience`, or the ads system reports
+ *   [io.github.shivathapaa.kmpads.error.AdConfigProblem.AudienceMismatch] and shows nothing.
+ * @param logger receives the SDK's messages, including a protocol mismatch with the adapter.
+ * @param muteAds mutes ad audio once the SDK has started, as on Android. Recommended for apps that
+ *   play audio.
  */
 public fun iosAdProvider(
     host: KMPAdsHost?,
     audience: AdAudienceConfig = AdAudienceConfig.GeneralAudience,
     testDeviceIdentifiers: List<String> = emptyList(),
     logger: AdLogger = AdLogger.NoOp,
-): AdProvider = IosAdProvider(host, audience, testDeviceIdentifiers, logger)
+    muteAds: Boolean = true,
+): AdProvider = IosAdProvider(host, audience, testDeviceIdentifiers, logger.nonThrowing(), muteAds)
 
 internal class IosAdProvider(
     private val host: KMPAdsHost?,
-    private val audience: AdAudienceConfig,
+    override val audience: AdAudienceConfig,
     private val testDeviceIdentifiers: List<String>,
     private val logger: AdLogger,
+    private val muteAds: Boolean,
 ) : AdProvider {
     override val id: AdNetworkId = AdNetworkId("admob-ios")
 
@@ -98,6 +108,8 @@ internal class IosAdProvider(
                     if (adapterSummary != null) {
                         logger.log(AdLogLevel.Info, TAG, "adapters: $adapterSummary", null)
                     }
+                    // After start, matching Android, where muting before initialisation throws.
+                    if (muteAds) adsHost.setAppMuted(true)
                     result.complete(AdInitOutcome.Ready)
                 }
 

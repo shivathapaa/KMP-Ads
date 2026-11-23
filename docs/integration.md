@@ -85,7 +85,7 @@ If your `google()` block uses a content filter, it must include `com.google.andr
 
 ```toml
 [versions]
-kmpads = "1.0.0"
+kmpads = "2.0.0"
 
 [libraries]
 kmpads-core          = { module = "io.github.shivathapaa.kmpads:ads-core",          version.ref = "kmpads" }
@@ -260,7 +260,7 @@ Four keys are well known. The built-in presets use the first three, so register 
 
 | Key | Meaning you supply |
 |---|---|
-| `AdSignalKey.ConsentObtained` | the consent gate — **never a constant `true`** |
+| `AdSignalKey.ConsentObtained` | the consent gate, required by every placement whatever its policy lists — **never a constant `true`** |
 | `AdSignalKey.UserIsPremium` | your entitlement; `flowOf(false)` if the app has no premium tier |
 | `AdSignalKey.NetworkAvailable` | connectivity |
 | `AdSignalKey.AppInForeground` | app foreground state; reserved but not referenced by the default presets |
@@ -282,8 +282,11 @@ policy = AdPolicy.FullScreenDefault.copy(suppressWhen = setOf(AdSignalKey.UserIs
 ```
 
 `suppressWhen` is *OR-of-NOTs* (any listed signal being true suppresses); `requireAll` is an *AND*
-(every listed signal must be true). A placement naming a signal you never registered fails closed —
-it suppresses with `SignalMissing` rather than showing.
+(every listed signal must be true). A placement naming a signal you never registered fails closed:
+for one of your own keys, `AdsSystem.create` reports `AdConfigProblem.UnregisteredSignal`, so
+`orNoOp` runs without ads; for a built-in key, the placement suppresses with `SignalMissing`. A
+placement is also suppressed with `SignalMissing` until every registered signal flow has emitted
+once.
 
 ---
 
@@ -328,7 +331,9 @@ fun buildAds(
 `sinks`, `logger`, `session`) — all have sane defaults; reach for them only when you have a reason.
 
 **`audience` is required.** An app whose store listing declares a child audience may serve only
-certified SDKs and no personalised ads. See [policy.md](policy.md).
+certified SDKs and no personalised ads. Pass the same value to the provider, `AdMobAndroid.install`
+or `iosAdProvider`: `AdsSystem.create` reports `AdConfigProblem.AudienceMismatch` if the two
+differ. See [policy.md](policy.md).
 
 The storage port is the whole persistence contract — read one string, write one string. Back it with
 DataStore, SharedPreferences, `NSUserDefaults`, whatever you already have:
@@ -427,7 +432,8 @@ class IosEntryPoint(host: KMPAdsHost?) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val consent = iosConsentController(host)
     private val ads = buildAds(
-        provider = iosAdProvider(host, logger = AdLogger.NoOp),
+        // The same audience AdsConfig gets; a logger, or a protocol mismatch goes unreported.
+        provider = iosAdProvider(host, audience = AdAudienceConfig.GeneralAudience, logger = myAdLogger),
         platform = AdPlatform.Ios,
         scope = scope,
         storage = UserDefaultsAdStorage(),
@@ -590,10 +596,26 @@ Events carry no SDK strings — an `AdError` exposes only `networkCode: Int?` an
 iOS ignores a tracking prompt requested during launch or over the consent form, and the status then
 stays `notDetermined`.
 
-Forward app lifecycle so session counting and app-open work:
+A gather that fails, for example offline on a fresh install, leaves `canRequestAds` false and is
+retried by the next `gather()`. A completed one is not repeated. Call it on every foreground until it
+succeeds, or every placement, rewarded ads included, stays suppressed for the life of the process.
+
+Forward app lifecycle so session counting and app-open work. A session ends only after
+`SessionConfig.inactivityThreshold` (30 minutes by default) in the background, so forward the app
+entering and leaving the background:
+
+| | `ads.onAppForegrounded()` | `ads.onAppBackgrounded()` |
+|---|---|---|
+| Android | `ProcessLifecycleOwner` `ON_START` | `ProcessLifecycleOwner` `ON_STOP` |
+| iOS | `UIApplication.willEnterForegroundNotification` | `UIApplication.didEnterBackgroundNotification` |
+
+Not an Activity's `onResume`/`onPause`, and not SwiftUI `scenePhase` `.active`/`.inactive`: a
+permission dialog, the tracking prompt, Control Center or the app switcher fire those without the user
+leaving the app. A foreground that does not follow a background never starts a session. iOS posts no
+`willEnterForegroundNotification` at launch, which is expected: the launch itself is handled when the
+system is created.
 
 ```kotlin
-ads.onAppForegrounded()   // and ads.onAppBackgrounded()
 ads.notifyFirstRunComplete()   // lets WarmUp.requireFirstRunComplete become true
 // ads.shutdown() on teardown if you own the scope
 ```
@@ -650,7 +672,10 @@ loads and shows run on `Dispatchers.Main`, so tests that show ads set a test mai
 | `Could not find …:ads-core` | `mavenCentral()` missing from `dependencyResolutionManagement` (§2) |
 | Every placement `Suppress(StateNotLoaded)` in a test | passed `backgroundScope` instead of the `TestScope` (§14) |
 | Every placement `Suppress(RequiredSignalFalse(ads.consent_obtained))` | consent not gathered yet, or wired to nothing — this is the gate working |
-| `Suppress(SignalMissing(...))` | a placement lists a signal not present in the `signals` map |
+| `Suppress(SignalMissing(...))` | a built-in signal, such as `ConsentObtained`, is not in the `signals` map, or a registered signal flow has not emitted yet |
+| `Misconfigured([UnregisteredSignal(...)])` | a placement lists one of your own signal keys that is not in the `signals` map |
+| `Misconfigured([AudienceMismatch(...)])` | the provider was built with a different audience from `AdsConfig.audience`; on iOS, pass it to `iosAdProvider` too |
+| Every placement `Suppress(StateNotLoaded)` long after launch | your `AdRemoteConfigSource` has not emitted yet; emit a cached configuration first |
 | `Suppress(ProviderLacksFormat)` | the platform's provider does not serve that format |
 | Hard crash on Android launch | missing `APPLICATION_ID` meta-data, or a `/` where a `~` belongs |
 | iOS aborts at launch | `CADisableMinimumFrameDurationOnPhone` missing from `Info.plist` |

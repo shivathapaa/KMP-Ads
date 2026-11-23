@@ -45,7 +45,7 @@ internal class AdMobBannerLoader(private val logger: AdLogger) : BannerAdLoader 
     ): BannerAdHandle {
         // The Activity context from the interop factory; ad views require it.
         val androidContext = context.androidContextOrNull()
-            ?: return DeadBannerHandle(request.widthDp)
+            ?: return DeadBannerHandle(reservedHeightDp(context, request.widthDp, request.sizing))
 
         // Set by the SDK's load callbacks. The AdView exists before it has loaded.
         val loaded = MutableStateFlow(false)

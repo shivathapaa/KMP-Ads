@@ -6,6 +6,8 @@ import io.github.shivathapaa.kmpads.config.AdUnitId
 import io.github.shivathapaa.kmpads.config.AdUnitMode
 import io.github.shivathapaa.kmpads.error.AdError
 import io.github.shivathapaa.kmpads.error.AdLogLevel
+import io.github.shivathapaa.kmpads.error.AdLogger
+import io.github.shivathapaa.kmpads.error.nonThrowing
 import io.github.shivathapaa.kmpads.event.AdEvent
 import io.github.shivathapaa.kmpads.event.AdReward
 import io.github.shivathapaa.kmpads.event.AdRevenue
@@ -35,6 +37,7 @@ import io.github.shivathapaa.kmpads.provider.NativeAdStyle
 import io.github.shivathapaa.kmpads.storage.AdStateCodec
 import io.github.shivathapaa.kmpads.storage.PersistedState
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
@@ -44,8 +47,11 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -67,7 +73,15 @@ private data class RuntimeState(
     val firstLaunchAtMillis: Long,
     val sessionOrdinal: Int,
     val sessionStartedAtMillis: Long,
+    /** When the user last arrived or left. Persisted: the next launch measures time away from it. */
     val lastForegroundAtMillis: Long,
+    /**
+     * When the app went to the background, or null while it is in the foreground. Set by the first
+     * background after a foreground and kept by a repeated one. Not persisted.
+     */
+    val backgroundedAtMillis: Long?,
+    /** Whether a foreground has been reported in this process. */
+    val foregroundSeen: Boolean,
     val firstRunComplete: Boolean,
     val counters: Map<AdPlacementId, PlacementCounters>,
 )
@@ -75,6 +89,9 @@ private data class RuntimeState(
 internal class DefaultAdsSystem(private val config: AdsConfig) : AdsSystem {
     private val placements: Map<AdPlacementId, AdPlacement> =
         config.placements.associateBy { it.id }
+
+    /** Declared before `init`, which can log before construction returns. */
+    private val logger: AdLogger = config.logger.nonThrowing()
 
     private val eventFlow = MutableSharedFlow<AdEvent>(
         replay = 0,
@@ -85,21 +102,28 @@ internal class DefaultAdsSystem(private val config: AdsConfig) : AdsSystem {
 
     override val events: SharedFlow<AdEvent> = eventFlow.asSharedFlow()
 
+    /** The first foreground of a process measures time away from here. */
+    private val createdAtMillis: Long = config.clock.nowMillis()
+
     private val state = MutableStateFlow(
         RuntimeState(
             // Every placement is suppressed until the counters are restored.
             loaded = false,
-            firstLaunchAtMillis = config.clock.nowMillis(),
+            firstLaunchAtMillis = createdAtMillis,
             sessionOrdinal = 1,
-            sessionStartedAtMillis = config.clock.nowMillis(),
-            lastForegroundAtMillis = config.clock.nowMillis(),
+            sessionStartedAtMillis = createdAtMillis,
+            lastForegroundAtMillis = createdAtMillis,
+            backgroundedAtMillis = null,
+            foregroundSeen = false,
             firstRunComplete = false,
             counters = emptyMap(),
         )
     )
 
     private val signals = MutableStateFlow<Map<AdSignalKey, Boolean>>(emptyMap())
-    private val remote = MutableStateFlow(AdRemoteConfig.Permissive)
+
+    /** Null until the remote source first emits; every placement is suppressed until then. */
+    private val remote = MutableStateFlow<AdRemoteConfig?>(null)
 
     private val initMutex = Mutex()
     private var initialized = false
@@ -113,7 +137,13 @@ internal class DefaultAdsSystem(private val config: AdsConfig) : AdsSystem {
         config.scope.launch { restoreState() }
         observeSignals()
         config.scope.launch {
-            config.remoteConfig.observe().collect { remote.value = it }
+            // A source that fails resolves to AllDisabled instead of throwing into the host's scope.
+            flow { emitAll(config.remoteConfig.observe()) }
+                .catch { failure ->
+                    logger.log(AdLogLevel.Warn, TAG, "remote config failed; ads disabled", failure)
+                    emit(AdRemoteConfig.AllDisabled)
+                }
+                .collect { remote.value = it }
         }
     }
 
@@ -133,7 +163,9 @@ internal class DefaultAdsSystem(private val config: AdsConfig) : AdsSystem {
     private fun policyInput(placement: AdPlacement): PolicyInput {
         val now = config.clock.nowMillis()
         val snapshot = state.value
-        val remoteConfig = remote.value
+        val received = remote.value
+        // Before the first remote value, StateLoadedRule suppresses; AllDisabled covers host rules.
+        val remoteConfig = received ?: AdRemoteConfig.AllDisabled
         val patched = remoteConfig.overrides[placement.id]?.applyTo(placement.policy)
             ?: placement.policy
 
@@ -152,7 +184,7 @@ internal class DefaultAdsSystem(private val config: AdsConfig) : AdsSystem {
             remotelyDisabled = placement.id in remoteConfig.disabledPlacements,
             unitIdPresent = resolveUnit(placement) != null,
             providerSupportsFormat = supportsFormat(placement.format),
-            stateLoaded = snapshot.loaded,
+            stateLoaded = snapshot.loaded && received != null,
             nowMillis = now,
             dayKey = config.dayKeyProvider.dayKey(now),
         )
@@ -235,6 +267,17 @@ internal class DefaultAdsSystem(private val config: AdsConfig) : AdsSystem {
 
         // Presents on the main thread. The mutex is taken first, so a queued show waits off-main.
         return showMutex.withLock {
+            // Checked again under the lock: a show queued behind another, such as a double tap,
+            // must see the counters that one recorded.
+            when (val decision = decisionFor(placement)) {
+                is AdDecision.Suppress -> {
+                    emit(AdEvent.Suppressed(now(), placement, declared.format, decision.reason))
+                    return@withLock AdShowOutcome.Suppressed(decision.reason)
+                }
+
+                AdDecision.Allow -> Unit
+            }
+            if (!loader.isReady(placement)) return@withLock AdShowOutcome.NotReady
             withContext(Dispatchers.Main.immediate) { present(declared, loader) }
         }
     }
@@ -318,8 +361,10 @@ internal class DefaultAdsSystem(private val config: AdsConfig) : AdsSystem {
             AdDecision.Allow -> Unit
         }
 
-        // Banners have no suspending entry point, so initialisation starts in the background.
-        config.scope.launch { ensureInitialized() }
+        // Banners have no suspending entry point, so initialisation is started here and runs until
+        // it first suspends, whatever the scope's dispatcher: the SDK's request configuration, such
+        // as a child-directed audience, is applied before this banner's first request.
+        config.scope.launch(start = CoroutineStart.UNDISPATCHED) { ensureInitialized() }
         warnIfLiveUnitsInDebug(placement, declared.format)
         emit(AdEvent.RequestStarted(now(), placement, declared.format))
 
@@ -408,15 +453,25 @@ internal class DefaultAdsSystem(private val config: AdsConfig) : AdsSystem {
     override fun onAppForegrounded() {
         val now = config.clock.nowMillis()
         state.update { current ->
-            val backgroundedFor = (now - current.lastForegroundAtMillis).milliseconds
-            val isNewSession = backgroundedFor >= config.session.inactivityThreshold
+            // Only time in the background ends a session. A foreground with no background before
+            // it, such as iOS returning from .inactive after a system alert, is the same visit. A
+            // process's first foreground counts from creation, so a process the system started in
+            // the background still begins a session when the user opens the app.
+            val awaySince = current.backgroundedAtMillis
+                ?: createdAtMillis.takeUnless { current.foregroundSeen }
+            val isNewSession = awaySince != null &&
+                (now - awaySince).milliseconds >= config.session.inactivityThreshold
+            val returned = current.copy(
+                lastForegroundAtMillis = now,
+                backgroundedAtMillis = null,
+                foregroundSeen = true,
+            )
             if (!isNewSession) {
-                current.copy(lastForegroundAtMillis = now)
+                returned
             } else {
-                current.copy(
+                returned.copy(
                     sessionOrdinal = current.sessionOrdinal + 1,
                     sessionStartedAtMillis = now,
-                    lastForegroundAtMillis = now,
                     // Per-session counters reset with the session, by definition.
                     counters = current.counters.mapValues { it.value.copy(shownThisSession = 0) },
                 )
@@ -427,7 +482,13 @@ internal class DefaultAdsSystem(private val config: AdsConfig) : AdsSystem {
     }
 
     override fun onAppBackgrounded() {
-        state.update { it.copy(lastForegroundAtMillis = config.clock.nowMillis()) }
+        val now = config.clock.nowMillis()
+        state.update { current ->
+            // The user left at the first background. A repeated one, such as a host that forwards
+            // both iOS .inactive and .background, must not shorten the time away.
+            val leftAt = current.backgroundedAtMillis ?: now
+            current.copy(backgroundedAtMillis = leftAt, lastForegroundAtMillis = leftAt)
+        }
         config.provider.onAppBackgrounded()
         config.scope.launch { flushWrite() }
     }
@@ -449,7 +510,7 @@ internal class DefaultAdsSystem(private val config: AdsConfig) : AdsSystem {
         config.sinks.forEach { sink ->
             // A host sink that throws must not take down an SDK callback with it.
             runCatching { sink.onEvent(event) }.onFailure { failure ->
-                config.logger.log(AdLogLevel.Warn, TAG, "event sink threw", failure)
+                logger.log(AdLogLevel.Warn, TAG, "event sink threw", failure)
             }
         }
     }
@@ -521,7 +582,7 @@ internal class DefaultAdsSystem(private val config: AdsConfig) : AdsSystem {
         val restored = runCatching { config.storage.read() }
             .onFailure { failure ->
                 if (failure is CancellationException) throw failure
-                config.logger.log(AdLogLevel.Warn, TAG, "state read failed", failure)
+                logger.log(AdLogLevel.Warn, TAG, "state read failed", failure)
             }
             .getOrNull()
             .let { AdStateCodec.decode(it, now) }
@@ -575,7 +636,7 @@ internal class DefaultAdsSystem(private val config: AdsConfig) : AdsSystem {
         )
         runCatching { config.storage.write(encoded) }.onFailure { failure ->
             if (failure is CancellationException) throw failure
-            config.logger.log(AdLogLevel.Warn, TAG, "state write failed", failure)
+            logger.log(AdLogLevel.Warn, TAG, "state write failed", failure)
         }
     }
 }

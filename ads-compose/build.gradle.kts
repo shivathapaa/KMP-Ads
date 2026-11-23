@@ -27,5 +27,9 @@ kotlin {
             implementation(kotlin("test"))
             implementation(libs.kotlinx.coroutines.test)
         }
+        // Compose UI tests run on the iOS simulator; an Android host test has no UI to compose into.
+        iosTest.dependencies {
+            implementation(libs.compose.ui.test)
+        }
     }
 }

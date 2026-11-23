@@ -11,7 +11,7 @@ app that consumes the library can already build against it.
 | | |
 |---|---|
 | group | `io.github.shivathapaa.kmpads` |
-| version | 1.0.0 |
+| version | 2.0.0 |
 | bridge protocol (`KMPAdsProtocol.VERSION`) | 2 |
 | artifacts | `ads-core`, `ads-compose`, `ads-bridge-ios`, `ads-admob-android`, `ads-testing` |
 | repository | Maven Central |
@@ -20,13 +20,13 @@ app that consumes the library can already build against it.
 
 | Dependency | Version | Notes |
 |---|---|---|
-| Kotlin | 2.4.20 | a consumer's Kotlin must be able to read this klib metadata |
-| Android Gradle Plugin | 9.4.1 | |
-| Gradle wrapper | 9.7.1 | |
-| Compose Multiplatform | 1.12.1 | `ads-compose` |
+| Kotlin | 2.4.21 | a consumer's Kotlin must be able to read this klib metadata |
+| Android Gradle Plugin | 9.5.2 | build only; the published metadata carries no AGP attribute |
+| Gradle wrapper | 9.9.2 | |
+| Compose Multiplatform | 1.12.2 | `ads-compose`; `ui-test` at the same version for its iOS UI tests |
 | Compose Material 3 | 1.12.0-alpha03 | sample only; separate version line from Compose Multiplatform |
 | kotlinx-coroutines | 1.11.0 | |
-| kotlinx-serialization-json | 1.11.0 | internal: the persisted policy state |
+| kotlinx-serialization-json | 1.13.0 | internal: the persisted policy state. Not 1.12.0, whose exception wrapping 1.13.0 reverted |
 | vanniktech maven-publish | 0.37.0 | publishing only |
 | compileSdk | 37 | |
 | minSdk | 24 | a library floor above an app's floor is a manifest-merger error |
@@ -35,13 +35,13 @@ app that consumes the library can already build against it.
 | play-services-ads | 25.5.0 | `ads-admob-android` |
 | user-messaging-platform | 4.0.0 | `ads-admob-android` |
 | androidx activity-compose | 1.13.0 | sample only |
-| androidx lifecycle | 2.11.0 | sample only |
+| androidx lifecycle | 2.11.1 | sample only |
 
 ## iOS (resolved by Xcode, not Gradle)
 
 | | Version |
 |---|---|
-| GoogleMobileAds SPM | 13.7.0 (`upToNextMajor`); has `largeAnchoredAdaptiveBanner(width:)`, which the adapter uses |
+| GoogleMobileAds SPM | 13.7.0 minimum (`upToNextMajor`), the sample resolves 13.13.0. The adapter needs `largeAnchoredAdaptiveBanner(width:)` (13.7) and `ageRestrictedTreatment` (13.3) |
 | GoogleUserMessagingPlatform SPM | 3.1.0 (`upToNextMajor`) |
 | Sample deployment target | iOS 16.0 |
 

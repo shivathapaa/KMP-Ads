@@ -138,8 +138,18 @@ public interface AdsSystem {
         style: NativeAdStyle,
     ): NativeAdHandle?
 
+    /**
+     * Call when the app returns to the foreground: `ProcessLifecycleOwner` ON_START on Android,
+     * `UIApplication.willEnterForegroundNotification` on iOS. A call that does not follow
+     * [onAppBackgrounded] continues the current session.
+     */
     public fun onAppForegrounded()
 
+    /**
+     * Call when the app goes to the background: `ProcessLifecycleOwner` ON_STOP on Android,
+     * `UIApplication.didEnterBackgroundNotification` on iOS. Not an Activity's `onPause` or iOS
+     * `.inactive`, which a permission dialog or Control Center also triggers.
+     */
     public fun onAppBackgrounded()
 
     /** Lets [io.github.shivathapaa.kmpads.policy.WarmUp.requireFirstRunComplete] become true. */
@@ -181,6 +191,13 @@ public interface AdsSystem {
                 io.github.shivathapaa.kmpads.config.AdUnitMode.ForceTestUnits
             ) {
                 add(AdConfigProblem.LiveUnitsInDebugBuild(config.units.mode))
+            }
+
+            // The provider applies its own audience to every request, so the two must agree.
+            config.provider.audience?.let { applied ->
+                if (applied != config.audience) {
+                    add(AdConfigProblem.AudienceMismatch(declared = config.audience, provider = applied))
+                }
             }
         }
     }

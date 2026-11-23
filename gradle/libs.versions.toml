@@ -1,10 +1,10 @@
 [versions]
-agp = "9.4.1"
-kotlin = "2.4.20"
-composeMultiplatform = "1.12.1"
+agp = "9.5.2"
+kotlin = "2.4.21"
+composeMultiplatform = "1.12.2"
 composeMaterial3 = "1.12.0-alpha03"
 coroutines = "1.11.0"
-serializationJson = "1.11.0"
+serializationJson = "1.13.0"
 mavenPublish = "0.37.0"
 
 android-compileSdk = "37"
@@ -12,7 +12,7 @@ android-minSdk = "24"
 android-aarMinCompileSdk = "35"
 
 androidxActivity = "1.13.0"
-androidxLifecycle = "2.11.0"
+androidxLifecycle = "2.11.1"
 
 playServicesAds = "25.5.0"
 userMessagingPlatform = "4.0.0"
@@ -25,6 +25,7 @@ kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serializa
 compose-runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "composeMultiplatform" }
 compose-foundation = { module = "org.jetbrains.compose.foundation:foundation", version.ref = "composeMultiplatform" }
 compose-ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "composeMultiplatform" }
+compose-ui-test = { module = "org.jetbrains.compose.ui:ui-test", version.ref = "composeMultiplatform" }
 compose-material3 = { module = "org.jetbrains.compose.material3:material3", version.ref = "composeMaterial3" }
 
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidxActivity" }

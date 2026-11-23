@@ -44,13 +44,26 @@ MainKt.MainViewController(adsHost: AdMobHost())
 Passing `nil` is supported: every request fails immediately with `KMPAdsProtocol.ERROR_CODE_NO_HOST`,
 `canRequestAds` stays false and no ad view is created, so the app runs without ads.
 
+Build the provider with the same audience you give `AdsConfig`, and a logger:
+
+```kotlin
+iosAdProvider(host, audience = AdAudienceConfig.GeneralAudience, logger = myAdLogger)
+```
+
+`AdsSystem.create` reports `AdConfigProblem.AudienceMismatch` if the two audiences differ, and a
+protocol mismatch with the adapter is reported only through the logger. Ads are muted once the SDK
+starts; pass `muteAds = false` to keep ad audio.
+
 ## The protocol contract
 
 - The library calls every `KMPAdsHost` method on the main thread, and the adapter must invoke every
   callback on the main thread.
-- `protocolVersion()` must return `KMPAdsProtocol.VERSION`. If it does not, the library disables ads
-  and logs an error. When a kmp-ads release changes the protocol, update your copy of the adapter
-  from the sample (see [Upgrading the adapter](#upgrading-the-adapter)).
+- `protocolVersion()` returns the protocol version the adapter was written for, as a literal: the
+  sample returns `2`. If it differs from `KMPAdsProtocol.VERSION`, the library disables ads and
+  logs an error. Never return `KMPAdsProtocol.shared.VERSION`: it always matches the framework the
+  adapter is compiled against, so an out-of-date adapter would go unnoticed. When a kmp-ads
+  release changes the protocol, update your copy of the adapter from the sample (see
+  [Upgrading the adapter](#upgrading-the-adapter)).
 - Ad formats cross the bridge as the `FORMAT_` string constants in `KMPAdsProtocol`.
 - Banners are sized by the library. `adaptiveBannerHeightPoints` is called first, synchronously, so
   the slot can reserve the height. `makeBanner` then receives a `BANNER_` sizing constant and that
@@ -61,13 +74,16 @@ Passing `nil` is supported: every request fails immediately with `KMPAdsProtocol
   (`collapseUntilLoaded`, `onLoadStateChanged`); without it a banner is reported as never loaded.
 - The adapter resolves its own presenting view controller from the foreground window scene.
 - Native ads are rendered in the SDK's `NativeAdView`, which registers clicks and impressions.
+- Touches reach the views from `makeBanner` and `makeNative` cooperatively: a touch that starts a
+  scroll goes to the list around the ad, and a view that is moving, as in a fling, receives no
+  touches until it has been still for 150 ms. The adapter needs no gesture handling of its own.
 
 ## Upgrading the adapter
 
 A release that bumps `KMPAdsProtocol.VERSION` changes `KMPAdsHost`, so an adapter written for the
 previous protocol no longer compiles. Replace your copy with the sample's `AdMobHost.swift` and
 re-apply your framework `import`. If you have changed the adapter, apply the protocol's changes by
-hand instead:
+hand instead, and then change the number `protocolVersion()` returns to the new version:
 
 ### Protocol 1 → 2
 

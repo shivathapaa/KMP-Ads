@@ -4,7 +4,6 @@ import android.app.Application
 import android.util.Log
 import androidx.compose.runtime.Composable
 import io.github.shivathapaa.kmpads.admob.AdMobAndroid
-import io.github.shivathapaa.kmpads.config.AdAudienceConfig
 import io.github.shivathapaa.kmpads.config.AdPlatform
 import io.github.shivathapaa.kmpads.consent.AdConsentController
 import io.github.shivathapaa.kmpads.error.AdLogLevel
@@ -35,8 +34,8 @@ public class SampleAds(application: Application) {
 
     private val adMob = AdMobAndroid.install(
         application = application,
-        // The audience declared in the app's store listing.
-        audience = AdAudienceConfig.GeneralAudience,
+        // The audience declared in the app's store listing, the same value AdsConfig gets.
+        audience = SampleAudience,
         logger = logger,
     )
 

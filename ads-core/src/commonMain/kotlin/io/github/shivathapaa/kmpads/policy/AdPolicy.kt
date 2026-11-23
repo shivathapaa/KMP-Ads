@@ -56,7 +56,8 @@ public data class WarmUp(
  * The rules that decide whether a placement may show.
  *
  * Any signal in [suppressWhen] that is true suppresses the placement, and every signal in
- * [requireAll] must be true. For other conditions, add an [AdPolicyRule].
+ * [requireAll] must be true. [AdSignalKey.ConsentObtained] is required whether or not it is listed:
+ * see [ConsentRule]. For other conditions, add an [AdPolicyRule].
  */
 public data class AdPolicy(
     val enabled: Boolean = true,

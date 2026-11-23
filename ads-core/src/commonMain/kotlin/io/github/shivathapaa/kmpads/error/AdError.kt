@@ -1,5 +1,6 @@
 package io.github.shivathapaa.kmpads.error
 
+import io.github.shivathapaa.kmpads.config.AdAudienceConfig
 import io.github.shivathapaa.kmpads.config.AdFormat
 import io.github.shivathapaa.kmpads.config.AdPlacementId
 import io.github.shivathapaa.kmpads.config.AdPlatform
@@ -96,6 +97,17 @@ public sealed interface AdConfigProblem {
 
     /** The host declared a debug build but requested live ad units. */
     public data class LiveUnitsInDebugBuild(val mode: AdUnitMode) : AdConfigProblem
+
+    /**
+     * The provider would send its SDK a different audience from the one declared in
+     * [io.github.shivathapaa.kmpads.runtime.AdsConfig.audience]. Usually the audience was passed to
+     * `AdsConfig` but not to `iosAdProvider` or `AdMobAndroid.install`, which would leave a
+     * child-directed app configured as a general-audience one.
+     */
+    public data class AudienceMismatch(
+        val declared: AdAudienceConfig,
+        val provider: AdAudienceConfig,
+    ) : AdConfigProblem
 }
 
 public enum class AdLogLevel { Debug, Info, Warn, Error }
@@ -111,3 +123,16 @@ public fun interface AdLogger {
         public val NoOp: AdLogger = AdLogger { _, _, _, _ -> }
     }
 }
+
+/**
+ * The host's logger, made safe to call from an SDK callback. On iOS a Kotlin exception escaping a
+ * callback into Objective-C terminates the app instead of unwinding.
+ */
+internal fun AdLogger.nonThrowing(): AdLogger =
+    if (this === AdLogger.NoOp) {
+        this
+    } else {
+        AdLogger { level, tag, message, cause ->
+            runCatching { log(level, tag, message, cause) }
+        }
+    }

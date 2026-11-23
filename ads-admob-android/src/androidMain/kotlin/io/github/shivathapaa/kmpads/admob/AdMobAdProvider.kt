@@ -19,7 +19,7 @@ private const val TAG = "kmp-ads/admob"
 /** Created by [AdMobAndroid.install]. */
 internal class AdMobAdProvider(
     private val application: Application,
-    private val audience: AdAudienceConfig,
+    override val audience: AdAudienceConfig,
     activities: ForegroundActivityTracker,
     clock: AdClock,
     private val testDeviceIds: List<String>,

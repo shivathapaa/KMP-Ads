@@ -96,6 +96,7 @@ public object AdPolicyEngine {
         StateLoadedRule,
         KillSwitchRule,
         WiringRule,
+        ConsentRule,
         SignalRule,
         WarmUpRule,
         CooldownRule,
@@ -114,7 +115,10 @@ public object AdPolicyEngine {
     }
 }
 
-/** Suppresses every placement until persisted state has loaded. */
+/**
+ * Suppresses every placement until persisted state has loaded and the remote configuration source
+ * has emitted its first value.
+ */
 public object StateLoadedRule : AdPolicyRule {
     override fun check(input: PolicyInput): SuppressionReason? =
         if (input.stateLoaded) null else SuppressionReason.StateNotLoaded
@@ -134,6 +138,19 @@ public object WiringRule : AdPolicyRule {
         !input.unitIdPresent -> SuppressionReason.UnitIdMissing
         !input.providerSupportsFormat -> SuppressionReason.ProviderLacksFormat
         else -> null
+    }
+}
+
+/**
+ * Requires [AdSignalKey.ConsentObtained] for every placement, whether or not its policy lists it.
+ * Consent is the one gate a policy cannot leave out: without this rule, a placement declared with
+ * [AdPolicy.Default] would request ads before consent.
+ */
+public object ConsentRule : AdPolicyRule {
+    override fun check(input: PolicyInput): SuppressionReason? {
+        val consent = input.signals[AdSignalKey.ConsentObtained]
+            ?: return SuppressionReason.SignalMissing(AdSignalKey.ConsentObtained)
+        return if (consent) null else SuppressionReason.RequiredSignalFalse(AdSignalKey.ConsentObtained)
     }
 }
 

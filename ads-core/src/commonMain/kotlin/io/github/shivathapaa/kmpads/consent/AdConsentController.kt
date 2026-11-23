@@ -37,8 +37,10 @@ public interface AdConsentController {
     public val state: StateFlow<AdConsentState>
 
     /**
-     * Idempotent per process. Presents a full-screen form, so call it after onboarding and permission
-     * prompts have finished.
+     * Presents a full-screen form when one is required, so call it after onboarding and permission
+     * prompts have finished. Once a gather completes, later calls return its state without asking
+     * again. A gather that failed, for example with no network on a fresh install, is retried by the
+     * next call, so calling this on every foreground is safe.
      */
     public suspend fun gather(
         debugGeography: AdDebugGeography = AdDebugGeography.Disabled,

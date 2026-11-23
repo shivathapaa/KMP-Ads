@@ -42,7 +42,8 @@ Some of these are enforced by the policy engine; the rest are for you to follow 
 
 ## Consent
 
-- `canRequestAds` is the only gate on requesting an ad.
+- `canRequestAds` is the only gate on requesting an ad. Map it into `AdSignalKey.ConsentObtained`:
+  every placement requires that signal, whether or not its policy lists it.
 - Never set a "non-personalised" flag yourself. With a certified consent platform the SDK reads the
   IAB TCF and Global Privacy Platform signals on every request, and a manual flag would serve
   non-personalised ads to users who did consent. The library has no personalised-ads switch for this
@@ -59,7 +60,9 @@ Some of these are enforced by the policy engine; the rest are for you to follow 
 
 `AdAudienceConfig` is required. An app whose store listing declares an audience that includes
 children may serve only certified SDKs and no personalised ads, must use
-`AgeRestriction.ChildDirected`, and must remove the advertising ID permission. Apps in the App
+`AgeRestriction.ChildDirected`, and must remove the advertising ID permission. Give the same value
+to `AdsConfig` and to the provider: `AdsSystem.create` reports `AdConfigProblem.AudienceMismatch`
+when they differ, so the SDK never starts with a looser audience than the app declared. Apps in the App
 Store's Kids category cannot use AdMob. Confirm the store declaration before adding ads.
 
 ## Rewarded ads and subscriptions
@@ -72,7 +75,8 @@ subscription entitlement.
 
 1. Turn off the app's own ads-enabled signal. No release and no network needed.
 2. Emit `AdRemoteConfig.AllDisabled`, or a per-placement patch, from your `AdRemoteConfigSource`.
-   Emit `AllDisabled` on every failure path.
+   Emit `AllDisabled` on every failure path; a source that throws is treated the same way. Until
+   the source first emits, every placement is suppressed.
 3. Pause the ad unit in the AdMob console. Every request then ends in no-fill: banner slots with
    `collapseUntilLoaded = true` take no space, while the rest keep their reserved, empty height
    (P-7).

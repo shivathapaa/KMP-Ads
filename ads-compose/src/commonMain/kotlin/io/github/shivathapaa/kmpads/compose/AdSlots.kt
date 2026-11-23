@@ -57,7 +57,8 @@ public fun rememberAdDecision(
  * does not move the content below it.
  *
  * @param collapseWhenSuppressed when true (the default), a suppressed slot takes no space and
- *   composes nothing.
+ *   composes nothing. When false, the slot keeps its space while suppressed: it requests a banner
+ *   once the placement is allowed and destroys it as soon as the placement is suppressed again.
  * @param onLoadStateChanged called with `true` once a creative has loaded and `false` while it has
  *   not (no fill, a failed request or a reload). Use it to hide your own decoration around the
  *   slot. Called with `false` when the slot leaves the composition.
@@ -77,7 +78,8 @@ public fun AdBannerSlot(
     placeholder: @Composable BoxScope.() -> Unit = {},
 ) {
     val decision by rememberAdDecision(placement, ads)
-    if (decision !is AdDecision.Allow && collapseWhenSuppressed) return
+    val allowed = decision is AdDecision.Allow
+    if (!allowed && collapseWhenSuppressed) return
 
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val context = rememberAdViewFactoryContext()
@@ -87,7 +89,7 @@ public fun AdBannerSlot(
         }
         if (reservedHeightDp <= 0) return@BoxWithConstraints
 
-        val handle = rememberBannerHandle(ads, placement, widthDp, sizing, context)
+        val handle = rememberBannerHandle(ads, placement, widthDp, sizing, context, allowed)
         val view = handle?.view
         // A banner view exists before it has loaded, so collapse on the load signal.
         val loaded by (handle?.isLoaded ?: NOT_LOADED).collectAsState()
@@ -100,7 +102,10 @@ public fun AdBannerSlot(
     }
 }
 
-/** Creates one banner per (placement, width, sizing) and disposes it with the composition. */
+/**
+ * Creates one banner per (placement, width, sizing) while the placement is allowed, and disposes it
+ * with the composition or as soon as the placement is suppressed.
+ */
 @Composable
 private fun rememberBannerHandle(
     ads: AdsSystem,
@@ -108,11 +113,12 @@ private fun rememberBannerHandle(
     widthDp: Int,
     sizing: BannerSizing,
     context: io.github.shivathapaa.kmpads.provider.AdViewFactoryContext,
+    allowed: Boolean,
 ): BannerAdHandle? {
     var handle by remember { mutableStateOf<BannerAdHandle?>(null) }
 
-    DisposableEffect(ads, placement, widthDp, sizing) {
-        val created = ads.createBanner(context, placement, widthDp, sizing)
+    DisposableEffect(ads, placement, widthDp, sizing, allowed) {
+        val created = if (allowed) ads.createBanner(context, placement, widthDp, sizing) else null
         created?.load()
         handle = created
         onDispose {
@@ -129,7 +135,8 @@ private fun rememberBannerHandle(
  * The creative's size is unknown until it loads, so size the slot with [modifier].
  *
  * @param collapseWhenSuppressed when true (the default), a suppressed slot composes nothing. When
- *   false, [placeholder] fills the slot until a creative arrives.
+ *   false, [placeholder] fills the slot until a creative arrives: the slot requests an ad once the
+ *   placement is allowed and destroys it as soon as the placement is suppressed again.
  * @param onLoadStateChanged called with `true` once a creative has loaded and `false` while it has
  *   not (no fill, a failed request or a reload). Use it to hide your own decoration around the
  *   slot. Called with `false` when the slot leaves the composition.
@@ -145,10 +152,11 @@ public fun AdNativeSlot(
     placeholder: @Composable BoxScope.() -> Unit = {},
 ) {
     val decision by rememberAdDecision(placement, ads)
-    if (decision !is AdDecision.Allow && collapseWhenSuppressed) return
+    val allowed = decision is AdDecision.Allow
+    if (!allowed && collapseWhenSuppressed) return
 
     val context = rememberAdViewFactoryContext()
-    val view = rememberNativeHandle(ads, placement, style, context)?.view
+    val view = rememberNativeHandle(ads, placement, style, context, allowed)?.view
 
     NotifyLoadState(view != null, onLoadStateChanged)
 
@@ -165,25 +173,33 @@ private fun NotifyLoadState(isLoaded: Boolean, onLoadStateChanged: (Boolean) -> 
     DisposableEffect(Unit) { onDispose { callback(false) } }
 }
 
-/** Loads one native ad per (placement, style, context) and disposes it with the composition. */
+/**
+ * Loads one native ad per (placement, style, context) while the placement is allowed, and disposes it
+ * with the composition or as soon as the placement is suppressed.
+ */
 @Composable
 private fun rememberNativeHandle(
     ads: AdsSystem,
     placement: AdPlacementId,
     style: NativeAdStyle,
     context: AdViewFactoryContext,
+    allowed: Boolean,
 ): NativeAdHandle? {
     var handle by remember { mutableStateOf<NativeAdHandle?>(null) }
     val scope = rememberCoroutineScope()
 
-    DisposableEffect(ads, placement, style, context) {
+    DisposableEffect(ads, placement, style, context, allowed) {
         var created: NativeAdHandle? = null
-        val job = scope.launch {
-            created = ads.loadNative(context, placement, style)
-            handle = created
+        val job = if (!allowed) {
+            null
+        } else {
+            scope.launch {
+                created = ads.loadNative(context, placement, style)
+                handle = created
+            }
         }
         onDispose {
-            job.cancel()
+            job?.cancel()
             created?.dispose()
             handle = null
         }

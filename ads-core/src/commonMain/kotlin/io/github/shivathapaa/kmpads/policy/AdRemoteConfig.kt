@@ -48,7 +48,9 @@ public data class AdRemoteConfig(
 
 /**
  * Supplies [AdRemoteConfig] from the host's own backend. Emit [AdRemoteConfig.AllDisabled] on a
- * transport or parse failure, not [AdRemoteConfig.Permissive].
+ * transport or parse failure, not [AdRemoteConfig.Permissive]; a flow that throws is treated the
+ * same way. Every placement is suppressed with [SuppressionReason.StateNotLoaded] until the first
+ * value arrives, so emit a cached configuration first if the fetch can be slow.
  */
 public fun interface AdRemoteConfigSource {
     public fun observe(): Flow<AdRemoteConfig>

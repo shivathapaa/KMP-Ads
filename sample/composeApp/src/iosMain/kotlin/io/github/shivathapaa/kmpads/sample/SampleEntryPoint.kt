@@ -37,7 +37,8 @@ public class SampleIosEntryPoint(host: KMPAdsHost?) {
     private val consentController: AdConsentController = iosConsentController(host, logger)
 
     private val ads: AdsSystem = createSampleAdsSystem(
-        provider = iosAdProvider(host, logger = logger),
+        // The same audience AdsConfig gets; the ads system refuses a mismatch.
+        provider = iosAdProvider(host, audience = SampleAudience, logger = logger),
         platform = AdPlatform.Ios,
         scope = scope,
         storage = UserDefaultsAdStorage(),

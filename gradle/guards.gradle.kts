@@ -10,27 +10,32 @@ fun sourceTree(vararg includes: String): ConfigurableFileTree = fileTree(rootDir
     exclude("gradle/guards.gradle.kts")
 }
 
-/** Fails if any module declares cinterop, linker options, a `.def` file or a CocoaPods block. */
-val checkNoNativeInterop by tasks.registering {
+/**
+ * Fails if any module declares cinterop, linker options or CocoaPods, or if the repository holds a
+ * `.def` file or a prebuilt native library. Each puts a native link dependency into a klib.
+ */
+val checkNoNativeInterop = tasks.register("checkNoNativeInterop") {
     group = "verification"
-    description = "Fails if any module declares cinterop, linkerOpts, a .def file, or CocoaPods."
+    description = "Fails on cinterop, linkerOpts, CocoaPods, .def files or native libraries."
 
     val buildScripts = sourceTree("**/*.gradle.kts")
-    val defFiles = sourceTree("**/*.def")
+    val nativeFiles = sourceTree("**/*.def", "**/*.a", "**/*.framework/**", "**/*.xcframework/**")
     val stamp = guardStamps.map { it.file("no-native-interop.txt") }
     val root = repoRoot
     val comments = commentPattern
 
     inputs.files(buildScripts).withPathSensitivity(PathSensitivity.RELATIVE)
-    inputs.files(defFiles).withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.files(nativeFiles).withPathSensitivity(PathSensitivity.RELATIVE)
     outputs.file(stamp)
 
     doLast {
-        val forbidden = Regex("""\bcinterops?\s*[({]|\blinkerOpts\b|\bcocoapods\s*\{""")
+        // Any mention, not only a block: `cinterops.creating`, `cinterops.create(…)` and the
+        // `native.cocoapods` plugin id all declare native interop.
+        val forbidden = Regex("""\bcinterops?\b|\blinkerOpts\b|\bcocoapods\b""")
         val offenders = buildScripts.files
             .filter { forbidden.containsMatchIn(it.readText().replace(comments, "")) }
             .map { it.relativeTo(root).path }
-            .plus(defFiles.files.map { "${it.relativeTo(root).path} (.def file)" })
+            .plus(nativeFiles.files.map { "${it.relativeTo(root).path} (native file)" })
 
         check(offenders.isEmpty()) {
             "Native interop is not allowed in kmp-ads:\n" +
@@ -41,7 +46,7 @@ val checkNoNativeInterop by tasks.registering {
 }
 
 /** Fails if `commonMain` references `AndroidView` or `UIKitView`. */
-val checkNoPlatformInteropInCommon by tasks.registering {
+val checkNoPlatformInteropInCommon = tasks.register("checkNoPlatformInteropInCommon") {
     group = "verification"
     description = "Fails if commonMain references AndroidView or UIKitView."
 
@@ -68,11 +73,23 @@ val checkNoPlatformInteropInCommon by tasks.registering {
 }
 
 /** Fails on a hardcoded AdMob id that does not belong to Google's demo publisher. */
-val checkNoLiteralAdUnitIds by tasks.registering {
+val checkNoLiteralAdUnitIds = tasks.register("checkNoLiteralAdUnitIds") {
     group = "verification"
     description = "Fails on a hardcoded LIVE ca-app-pub id anywhere in the repository."
 
-    val sources = sourceTree("**/src/**/*.kt", "**/src/**/*.xml", "**/*.plist", "**/*.swift")
+    // Build scripts and project files too: manifest placeholders, BuildConfig fields, xcconfig and
+    // Xcode build settings are where app ids usually live. local.properties is per-machine and
+    // gitignored, so it is not source.
+    val sources = sourceTree(
+        "**/src/**/*.kt",
+        "**/src/**/*.xml",
+        "**/*.plist",
+        "**/*.swift",
+        "**/*.gradle.kts",
+        "**/*.properties",
+        "**/*.xcconfig",
+        "**/*.pbxproj",
+    ).apply { exclude("**/local.properties") }
     val stamp = guardStamps.map { it.file("no-literal-ad-unit-ids.txt") }
     val root = repoRoot
 
@@ -100,7 +117,7 @@ val checkNoLiteralAdUnitIds by tasks.registering {
 }
 
 /** Checks the Swift names exported in the sample framework's Objective-C header. */
-val checkObjCExport by tasks.registering {
+val checkObjCExport = tasks.register("checkObjCExport") {
     group = "verification"
     description = "Asserts the exported Swift names in the sample framework's Objective-C header."
 

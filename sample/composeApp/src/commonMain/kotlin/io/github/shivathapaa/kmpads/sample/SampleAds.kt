@@ -77,6 +77,12 @@ internal object SamplePlacements {
 }
 
 /**
+ * The audience declared in the sample's store listing. Declared once and passed to both the
+ * platform provider and [AdsConfig]; the ads system refuses a provider configured differently.
+ */
+internal val SampleAudience: AdAudienceConfig = AdAudienceConfig.GeneralAudience
+
+/**
  * Builds the sample's ads system. Map a premium entitlement into [AdSignalKey.UserIsPremium] to
  * hide ads for paying users.
  */
@@ -94,7 +100,7 @@ internal fun createSampleAdsSystem(
         units = AdUnitRegistry.testOnly(),
         provider = provider,
         platform = platform,
-        audience = AdAudienceConfig.GeneralAudience,
+        audience = SampleAudience,
         scope = scope,
         storage = storage,
         signals = mapOf(

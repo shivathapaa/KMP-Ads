@@ -1,10 +1,5 @@
 package io.github.shivathapaa.kmpads.admob
 
-import android.content.Context
-import com.google.android.ump.ConsentDebugSettings
-import com.google.android.ump.ConsentInformation
-import com.google.android.ump.ConsentRequestParameters
-import com.google.android.ump.UserMessagingPlatform
 import io.github.shivathapaa.kmpads.consent.AdConsentController
 import io.github.shivathapaa.kmpads.consent.AdConsentState
 import io.github.shivathapaa.kmpads.consent.AdDebugGeography
@@ -21,22 +16,21 @@ private const val TAG = "kmp-ads/ump"
 
 /**
  * Consent through Google's User Messaging Platform. A consent failure leaves `canRequestAds` false,
- * so every placement is suppressed.
+ * so every placement is suppressed until a later [gather] succeeds.
  */
 internal class UmpConsentController(
-    private val context: Context,
+    private val ump: UmpClient,
     private val activities: ForegroundActivityTracker,
     private val logger: AdLogger,
 ) : AdConsentController {
-    private val consentInformation: ConsentInformation =
-        UserMessagingPlatform.getConsentInformation(context)
-
     private val backing = MutableStateFlow(currentState())
 
     override val state: StateFlow<AdConsentState> = backing.asStateFlow()
 
     /** Serialises consent gathering so the form is never shown twice at once. */
     private val gate = Mutex()
+
+    /** Set only by a gather that completed, so a failed one is asked again by the next call. */
     private var gathered = false
 
     override suspend fun gather(
@@ -44,58 +38,46 @@ internal class UmpConsentController(
         testDeviceIdentifiers: List<String>,
     ): AdConsentState = gate.withLock {
         if (gathered) return@withLock backing.value
-        gathered = true
 
         val activity = activities.current
         if (activity == null) {
             logger.log(AdLogLevel.Warn, TAG, "no activity to gather consent in", null)
-            gathered = false
             return@withLock backing.value
         }
 
-        val parameters = ConsentRequestParameters.Builder()
-            .apply {
-                if (debugGeography != AdDebugGeography.Disabled || testDeviceIdentifiers.isNotEmpty()) {
-                    setConsentDebugSettings(
-                        ConsentDebugSettings.Builder(context)
-                            .setDebugGeography(debugGeography.toUmpGeography())
-                            .apply { testDeviceIdentifiers.forEach(::addTestDeviceHashedId) }
-                            .build()
-                    )
-                }
-            }
-            .build()
-
-        val infoUpdated = CompletableDeferred<Unit>()
-        consentInformation.requestConsentInfoUpdate(
-            activity,
-            parameters,
-            { infoUpdated.complete(Unit) },
-            { error ->
-                logger.log(AdLogLevel.Warn, TAG, "info update failed: ${error.message}", null)
-                infoUpdated.complete(Unit)
+        val infoUpdated = CompletableDeferred<Boolean>()
+        ump.requestConsentInfoUpdate(
+            activity = activity,
+            debugGeography = debugGeography,
+            testDeviceIdentifiers = testDeviceIdentifiers,
+            onSuccess = { infoUpdated.complete(true) },
+            onFailure = { message ->
+                logger.log(AdLogLevel.Warn, TAG, "info update failed: $message", null)
+                infoUpdated.complete(false)
             },
         )
-        infoUpdated.await()
+        val infoUpToDate = infoUpdated.await()
 
-        val formShown = CompletableDeferred<Unit>()
-        UserMessagingPlatform.loadAndShowConsentFormIfRequired(activity) { error ->
-            if (error != null) {
-                logger.log(AdLogLevel.Warn, TAG, "form failed: ${error.message}", null)
+        val formCompleted = CompletableDeferred<Boolean>()
+        ump.loadAndShowConsentFormIfRequired(activity) { errorMessage ->
+            if (errorMessage != null) {
+                logger.log(AdLogLevel.Warn, TAG, "form failed: $errorMessage", null)
             }
-            formShown.complete(Unit)
+            formCompleted.complete(errorMessage == null)
         }
-        formShown.await()
 
+        // A failed update or form, such as no network on a fresh install, leaves canRequestAds false
+        // until a later call succeeds.
+        gathered = formCompleted.await() && infoUpToDate
         currentState().also { backing.value = it }
     }
 
     override suspend fun showPrivacyOptions(): AdConsentState {
         val activity = activities.current ?: return backing.value
         val dismissed = CompletableDeferred<Unit>()
-        UserMessagingPlatform.showPrivacyOptionsForm(activity) { error ->
-            if (error != null) {
-                logger.log(AdLogLevel.Warn, TAG, "privacy form failed: ${error.message}", null)
+        ump.showPrivacyOptionsForm(activity) { errorMessage ->
+            if (errorMessage != null) {
+                logger.log(AdLogLevel.Warn, TAG, "privacy form failed: $errorMessage", null)
             }
             dismissed.complete(Unit)
         }
@@ -106,31 +88,22 @@ internal class UmpConsentController(
     }
 
     override fun reset() {
-        consentInformation.reset()
+        ump.reset()
         gathered = false
         backing.value = currentState()
     }
 
     private fun currentState(): AdConsentState {
-        val privacyOptionsRequired =
-            consentInformation.privacyOptionsRequirementStatus ==
-                ConsentInformation.PrivacyOptionsRequirementStatus.REQUIRED
+        val canRequestAds = ump.canRequestAds
+        val privacyOptionsRequired = ump.privacyOptionsRequired
         return AdConsentState(
-            canRequestAds = consentInformation.canRequestAds(),
+            canRequestAds = canRequestAds,
             privacyOptionsRequired = privacyOptionsRequired,
             status = when {
-                consentInformation.canRequestAds() -> AdConsentState.Status.Obtained
+                canRequestAds -> AdConsentState.Status.Obtained
                 privacyOptionsRequired -> AdConsentState.Status.Required
                 else -> AdConsentState.Status.Unknown
             },
         )
     }
-}
-
-private fun AdDebugGeography.toUmpGeography(): Int = when (this) {
-    AdDebugGeography.Disabled -> ConsentDebugSettings.DebugGeography.DEBUG_GEOGRAPHY_DISABLED
-    AdDebugGeography.Eea -> ConsentDebugSettings.DebugGeography.DEBUG_GEOGRAPHY_EEA
-    AdDebugGeography.Other -> ConsentDebugSettings.DebugGeography.DEBUG_GEOGRAPHY_OTHER
-    AdDebugGeography.RegulatedUsState ->
-        ConsentDebugSettings.DebugGeography.DEBUG_GEOGRAPHY_REGULATED_US_STATE
 }

@@ -96,6 +96,11 @@ public sealed interface AdUnitMode {
     /**
      * Live units in a debug build. Requires a [reason] and reports a diagnostic event each time a unit
      * is resolved. Intended for short fill checks on a registered test device.
+     *
+     * Like [LiveUnits], it is rejected as
+     * [io.github.shivathapaa.kmpads.error.AdConfigProblem.LiveUnitsInDebugBuild] when
+     * `AdsConfig.hostDeclaresDebugBuild` is true, so a fill check needs both this mode and a build
+     * that does not declare itself debug.
      */
     public data class LiveUnitsInDebugBuild(val reason: String) : AdUnitMode
 }

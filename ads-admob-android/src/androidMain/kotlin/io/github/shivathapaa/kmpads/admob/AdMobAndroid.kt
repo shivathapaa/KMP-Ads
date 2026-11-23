@@ -28,7 +28,8 @@ public class AdMobAndroid private constructor(
     public companion object {
         /**
          * @param audience the audience declared for the app in its store listing. Apps directed at
-         *   children cannot serve personalised ads.
+         *   children cannot serve personalised ads. It must equal `AdsConfig.audience`, or the ads
+         *   system reports `AdConfigProblem.AudienceMismatch` and shows nothing.
          * @param muteAds mutes ad audio. Recommended for apps that play audio.
          * @param testDeviceIds devices that receive test ads. Keep these out of source control.
          */
@@ -42,6 +43,7 @@ public class AdMobAndroid private constructor(
         ): AdMobAndroid {
             val activities = ForegroundActivityTracker()
             application.registerActivityLifecycleCallbacks(activities)
+            val safeLogger = logger.nonThrowing()
 
             return AdMobAndroid(
                 provider = AdMobAdProvider(
@@ -51,12 +53,12 @@ public class AdMobAndroid private constructor(
                     clock = clock,
                     testDeviceIds = testDeviceIds,
                     muteAds = muteAds,
-                    logger = logger,
+                    logger = safeLogger,
                 ),
                 consentController = UmpConsentController(
-                    context = application.applicationContext,
+                    ump = GoogleUmpClient(application.applicationContext),
                     activities = activities,
-                    logger = logger,
+                    logger = safeLogger,
                 ),
                 application = application,
                 activities = activities,
@@ -64,3 +66,13 @@ public class AdMobAndroid private constructor(
         }
     }
 }
+
+/** The host's logger, made safe to call from an SDK callback, where a throw would crash the app. */
+private fun AdLogger.nonThrowing(): AdLogger =
+    if (this === AdLogger.NoOp) {
+        this
+    } else {
+        AdLogger { level, tag, message, cause ->
+            runCatching { log(level, tag, message, cause) }
+        }
+    }

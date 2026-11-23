@@ -1,5 +1,6 @@
 package io.github.shivathapaa.kmpads.provider
 
+import io.github.shivathapaa.kmpads.config.AdAudienceConfig
 import io.github.shivathapaa.kmpads.config.AdFormat
 import io.github.shivathapaa.kmpads.config.AdPlacementId
 import io.github.shivathapaa.kmpads.config.AdUnitId
@@ -51,6 +52,13 @@ public sealed interface AdInitOutcome {
  */
 public interface AdProvider {
     public val id: AdNetworkId
+
+    /**
+     * The audience this provider sends its ad SDK, or null when it sends none. The runtime refuses
+     * a provider whose audience differs from [io.github.shivathapaa.kmpads.runtime.AdsConfig.audience],
+     * so the audience the app declares is the one the SDK receives.
+     */
+    public val audience: AdAudienceConfig? get() = null
 
     /** Idempotent. Called once by the runtime, and safe to call again after process death. */
     public suspend fun initialize(): AdInitOutcome

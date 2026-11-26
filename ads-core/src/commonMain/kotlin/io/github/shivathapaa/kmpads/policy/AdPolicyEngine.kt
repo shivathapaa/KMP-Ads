@@ -16,6 +16,14 @@ public data class PlacementCounters(
     val shownEver: Int = 0,
 )
 
+/**
+ * How many times the placement was shown on [dayKey]. A key below the recorded day means the
+ * calendar moved backwards, as a local-time key does on a flight west across midnight. That counts
+ * as the recorded day, so the daily cap stays closed instead of resetting.
+ */
+internal fun PlacementCounters.shownOnDay(dayKey: Int): Int =
+    if (dayKey <= this.dayKey) shownToday else 0
+
 /** The current session, as the warm-up rule sees it. [ordinal] is 1-based: a first run is 1. */
 public data class SessionSnapshot(
     val ordinal: Int,
@@ -41,7 +49,11 @@ public data class PolicyInput(
     val providerSupportsFormat: Boolean,
     val stateLoaded: Boolean,
     val nowMillis: Long,
-    /** A calendar-day index in whatever timezone the host chose. Only equality matters here. */
+    /**
+     * A calendar-day index in whatever timezone the host chose. A key below
+     * [PlacementCounters.dayKey] counts as that day, so a calendar that moves backwards keeps the
+     * daily cap closed.
+     */
     val dayKey: Int,
 )
 
@@ -222,9 +234,10 @@ public object FrequencyRule : AdPolicyRule {
         }
 
         cap.perDay?.let { limit ->
-            // Counters from a previous day count as zero.
-            val today = if (counters.dayKey == input.dayKey) counters.shownToday else 0
-            if (today >= limit) return SuppressionReason.DailyCapReached(limit)
+            // An earlier day counts as zero; a backwards day key keeps the recorded day.
+            if (counters.shownOnDay(input.dayKey) >= limit) {
+                return SuppressionReason.DailyCapReached(limit)
+            }
         }
 
         if (cap.minInterval > Duration.ZERO) {

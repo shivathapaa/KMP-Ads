@@ -26,6 +26,7 @@ import io.github.shivathapaa.kmpads.runtime.AdShowOutcome
 import io.github.shivathapaa.kmpads.runtime.AdsBootstrap
 import io.github.shivathapaa.kmpads.runtime.AdsConfig
 import io.github.shivathapaa.kmpads.runtime.AdsSystem
+import io.github.shivathapaa.kmpads.runtime.DayKeyProvider
 import io.github.shivathapaa.kmpads.storage.InMemoryAdStorage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -72,6 +73,7 @@ class AdsSystemRuntimeTest {
     private fun TestScope.build(
         provider: FakeAdProvider = FakeAdProvider(),
         clock: MutableAdClock = MutableAdClock(),
+        dayKeyProvider: DayKeyProvider = DayKeyProvider.Utc,
         sink: RecordingEventSink = RecordingEventSink(),
         policy: AdPolicy = AdPolicy(warmUp = WarmUp.None),
         isPremium: Boolean = false,
@@ -94,6 +96,7 @@ class AdsSystemRuntimeTest {
                 scope = scope,
                 storage = InMemoryAdStorage(),
                 clock = clock,
+                dayKeyProvider = dayKeyProvider,
                 signals = mapOf(
                     AdSignalKey.UserIsPremium to flowOf(isPremium),
                     AdSignalKey.ConsentObtained to flowOf(true),
@@ -174,6 +177,32 @@ class AdsSystemRuntimeTest {
         advanceUntilIdle()
 
         assertEquals(2, fixture.sink.ofType<AdEvent.Impression>().size)
+    }
+
+    @Test
+    fun flying_west_across_midnight_does_not_reset_the_daily_cap() = runTest {
+        // A local-time day key goes from 101 back to 100 when the user crosses midnight westwards.
+        var localDay = 101
+        val fixture = build(
+            policy = AdPolicy(frequency = FrequencyCap(perDay = 2)),
+            dayKeyProvider = DayKeyProvider { localDay },
+        )
+        advanceUntilIdle()
+        val capReached = AdDecision.Suppress(SuppressionReason.DailyCapReached(2))
+
+        showAndDismiss(fixture)
+        localDay = 100
+        showAndDismiss(fixture)
+
+        assertEquals(2, fixture.sink.ofType<AdEvent.Impression>().size)
+        assertEquals(capReached, fixture.ads.decision(interstitial).first())
+
+        // Midnight in the new time zone is still the day those shows were counted on.
+        localDay = 101
+        assertEquals(capReached, fixture.ads.decision(interstitial).first())
+
+        localDay = 102
+        assertEquals(AdDecision.Allow, fixture.ads.decision(interstitial).first())
     }
 
     @Test
@@ -486,11 +515,15 @@ class AdsSystemRuntimeTest {
 
     /** Shows the interstitial once and dismisses it, which uses up [OncePerSession]. */
     private fun TestScope.showOnce(fixture: Fixture) {
+        showAndDismiss(fixture)
+        assertEquals(listOf(interstitial), fixture.provider.shownPlacements, "shown once")
+    }
+
+    private fun TestScope.showAndDismiss(fixture: Fixture) {
         launch { fixture.ads.show(interstitial) }
         advanceUntilIdle()
         fixture.provider.completeShow(interstitial)
         advanceUntilIdle()
-        assertEquals(listOf(interstitial), fixture.provider.shownPlacements, "shown once")
     }
 
     private class Fixture(

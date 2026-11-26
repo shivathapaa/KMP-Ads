@@ -125,6 +125,18 @@ class AdPolicyEngineTest {
     }
 
     @Test
+    fun a_backwards_day_key_keeps_the_daily_cap_closed() {
+        // Flying west across midnight moves a local-time day key from 101 back to 100. That must
+        // not read as a new day with nothing shown yet.
+        val policy = AdPolicy(frequency = FrequencyCap(perDay = 2))
+        val counters = PlacementCounters(dayKey = 101, shownToday = 2)
+        val decision = AdPolicyEngine.evaluate(
+            input(policy = policy, counters = counters, dayKey = 100)
+        )
+        assertEquals(AdDecision.Suppress(SuppressionReason.DailyCapReached(2)), decision)
+    }
+
+    @Test
     fun the_global_kill_switch_wins_over_everything_else() {
         val decision = AdPolicyEngine.evaluate(input(globalEnabled = false))
         assertEquals(AdDecision.Suppress(SuppressionReason.GlobalKillSwitch), decision)

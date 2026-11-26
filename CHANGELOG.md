@@ -3,6 +3,22 @@
 All notable changes to kmp-ads. The version scheme is [Semantic Versioning](https://semver.org); any
 change to the `ads-bridge-ios` protocol is a major release.
 
+## 2.0.1
+
+### Fixed
+
+- The per-day cap reset when the day key went backwards, as a local-time `DayKeyProvider` does on a
+  flight west across midnight, or as any key does when the device clock is set back across
+  midnight. The placement got a fresh day's quota. A key below the day a placement was last shown
+  on now counts as that day, the same way a backwards clock already kept the cooldown closed. The
+  default UTC key does not move when the user travels.
+
+### Changed
+
+- `DayKeyProvider` keys must increase from one day to the next, like days since the epoch. Equality
+  was enough before. A key that wraps, such as the day of the year, now keeps the per-day cap closed
+  until it passes the last recorded day.
+
 ## 2.0.0
 
 ### Upgrading

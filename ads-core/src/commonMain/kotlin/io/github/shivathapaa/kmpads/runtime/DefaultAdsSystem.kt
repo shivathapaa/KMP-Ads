@@ -20,6 +20,7 @@ import io.github.shivathapaa.kmpads.policy.PlacementCounters
 import io.github.shivathapaa.kmpads.policy.PolicyInput
 import io.github.shivathapaa.kmpads.policy.SessionSnapshot
 import io.github.shivathapaa.kmpads.policy.SuppressionReason
+import io.github.shivathapaa.kmpads.policy.shownOnDay
 import io.github.shivathapaa.kmpads.provider.AdInitOutcome
 import io.github.shivathapaa.kmpads.provider.AdLoadOutcome
 import io.github.shivathapaa.kmpads.provider.AdLoadRequest
@@ -549,13 +550,13 @@ internal class DefaultAdsSystem(private val config: AdsConfig) : AdsSystem {
         val dayKey = config.dayKeyProvider.dayKey(now)
         state.update { current ->
             val previous = current.counters[placement] ?: PlacementCounters()
-            val shownToday = if (previous.dayKey == dayKey) previous.shownToday + 1 else 1
             current.copy(
                 counters = current.counters + (
                     placement to previous.copy(
                         lastShownAtMillis = now,
-                        dayKey = dayKey,
-                        shownToday = shownToday,
+                        // A backwards day key keeps the recorded day, as the engine reads it.
+                        dayKey = maxOf(previous.dayKey, dayKey),
+                        shownToday = previous.shownOnDay(dayKey) + 1,
                         shownThisSession = previous.shownThisSession + 1,
                         shownEver = previous.shownEver + 1,
                     )

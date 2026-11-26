@@ -44,6 +44,10 @@ internal expect fun currentTimeMillisCompat(): Long
 /**
  * Maps an instant to a calendar-day index for the per-day frequency cap. The default counts UTC
  * days; supply your own for local-time days.
+ *
+ * The index must increase from one day to the next, like days since the epoch. A key below the day
+ * a placement was last shown on counts as that day, so the cap holds when a local-time key moves
+ * back, as it does on a flight west across midnight.
  */
 public fun interface DayKeyProvider {
     public fun dayKey(nowMillis: Long): Int

@@ -9,7 +9,10 @@ import kotlin.test.assertEquals
 
 /** Tests for when the UMP consent controller asks UMP to gather consent again. */
 class UmpConsentControllerTest {
-    private val activities = ForegroundActivityTracker().apply { onActivityResumed(Activity()) }
+    // The tracker holds activities weakly. Android keeps a resumed one alive; here the test
+    // must, or a garbage collection mid-test leaves gather() with no activity.
+    private val activity = Activity()
+    private val activities = ForegroundActivityTracker().apply { onActivityResumed(activity) }
 
     @Test
     fun a_failed_info_update_is_retried_on_the_next_call() = runTest {
@@ -60,7 +63,7 @@ class UmpConsentControllerTest {
         controller.gather()
         assertEquals(0, ump.infoUpdates)
 
-        tracker.onActivityResumed(Activity())
+        tracker.onActivityResumed(activity)
         controller.gather()
 
         assertEquals(1, ump.infoUpdates)
